@@ -37,14 +37,14 @@ whnf :: (MonadEval m) => Exp -> m Exp
 whnf (EApp f x) = do
     fnf <- whnf f
     case fnf of
-	EMod m -> do
-	    xnf <- whnf x
-	    case xnf of
-		EPrim (PSym p) | Just v <- Map.lookup p m -> whnf v
-		EVar v -> return $ EApp (EMod m) (EVar v)
-		_ -> fail $ "Invalid application: " ++ show (EApp fnf xnf)
-	ELam v body -> whnf (substitute v x body)
-	EVar v -> return $ EApp (EVar v) x
+        EMod m -> do
+            xnf <- whnf x
+            case xnf of
+                EPrim (PSym p) | Just v <- Map.lookup p m -> whnf v
+                EVar v -> return $ EApp (EMod m) (EVar v)
+                _ -> fail $ "Invalid application: " ++ show (EApp fnf xnf)
+        ELam v body -> whnf (substitute v x body)
+        EVar v -> return $ EApp (EVar v) x
 whnf x = return x
 
 substitute :: Variable -> Exp -> Exp -> Exp
@@ -54,10 +54,10 @@ substitute v with = go
     
     go (EPrim p) = EPrim p
     go (EVar v') | v == v' = with
-		 | otherwise = EVar v'
+                 | otherwise = EVar v'
     go (EApp t u) = EApp (go t) (go u)
     go l@(ELam v' body) | v' `Set.member` withFVs = go (alphaConvertFresh withFVs l)
-			| otherwise = ELam v' (go body)
+                        | otherwise = ELam v' (go body)
     go (EMod m) = EMod (Map.map go m)
 
 freeVars :: Exp -> Set.Set Variable
