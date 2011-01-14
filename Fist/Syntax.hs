@@ -1,8 +1,13 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
-module Fist.Syntax where
+module Fist.Syntax 
+    ( pretty
+    , expr
+    , defn
+    )
+where
 
-import Prelude hiding (lex)
+import Prelude hiding (lex, mod)
 import qualified Data.Map as Map
 import qualified Text.Parsec as P
 import qualified Text.Parsec.Token as P
@@ -41,18 +46,12 @@ lex = P.makeTokenParser $ P.LanguageDef {
     P.caseSensitive = True
 }
 
-pTerm = (EPrim <$> pPrim) <|> (EVar <$> pVar) <|> (EMod <$> pModule) <|> pLambda <|> P.parens lex pExpr
-pPrim = (PInt <$> P.integer lex) <|> (PStr <$> P.stringLiteral lex) <|> (PSym <$> pSymbol)
-pSymbol = Symbol <$> (P.char '\'' *> P.identifier lex)
-pVar = Variable <$> P.identifier lex
-pModule = Map.fromList <$> (P.braces lex $ P.commaSep lex pDefn <* optional (P.reservedOp lex ","))
-pDefn = massage <$> (Symbol <$> P.identifier lex) <*> P.many pVar <* P.reservedOp lex "=" <*> pExpr
+term = (EPrim <$> prim) <|> (EVar <$> var) <|> (EMod <$> mod) <|> lambda <|> P.parens lex expr
+prim = (PInt <$> P.integer lex) <|> (PStr <$> P.stringLiteral lex) <|> (PSym <$> symbol)
+symbol = Symbol <$> (P.char '\'' *> P.identifier lex)
+var = Variable <$> P.identifier lex
+mod = Map.fromList <$> (P.braces lex $ P.commaSep lex defn <* optional (P.reservedOp lex ","))
+defn = massage <$> (Symbol <$> P.identifier lex) <*> P.many var <* P.reservedOp lex "=" <*> expr
     where massage sym vars body = (sym, foldr ELam body vars)
-pLambda = flip (foldr ELam) <$> (P.reservedOp lex "\\" *> P.many1 pVar <* P.reservedOp lex "->") <*> pExpr
-pExpr = foldl1 EApp <$> P.many1 pTerm
-
-parseExp :: String -> Either P.ParseError Exp
-parseExp = P.parse pExpr "<input>"
-
-parseDefn :: String -> Either P.ParseError (Symbol, Exp)
-parseDefn = P.parse pDefn "<input>"
+lambda = flip (foldr ELam) <$> (P.reservedOp lex "\\" *> P.many1 var <* P.reservedOp lex "->") <*> expr
+expr = foldl1 EApp <$> P.many1 term
