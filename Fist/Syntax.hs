@@ -2,8 +2,10 @@
 
 module Fist.Syntax 
     ( pretty
+    , Resolver(..)
     , expr
     , defn
+    , whitespace
     )
 where
 
@@ -12,8 +14,10 @@ import qualified Data.Map as Map
 import qualified Text.Parsec as P
 import qualified Text.Parsec.Token as P
 import qualified Text.PrettyPrint.HughesPJ as PP
+import Control.Monad.Reader
 import Control.Applicative
 import Fist.Value
+
 
 pretty :: Exp -> PP.Doc
 pretty (EPrim (PInt z)) = PP.integer z
@@ -32,6 +36,11 @@ pretty (EMod m) = PP.braces . PP.sep . PP.punctuate (PP.text ",") . map ppEntry 
     where
     ppEntry (Symbol k,v) = PP.text k PP.<+> PP.text "=" PP.<+> pretty v
 
+data Resolver = Resolver {
+    resolveVar :: String -> Exp,
+    underLambda :: String -> Resolver
+}
+
 lex = P.makeTokenParser $ P.LanguageDef {
     P.commentStart = "{-",
     P.commentEnd = "-}",
@@ -46,12 +55,15 @@ lex = P.makeTokenParser $ P.LanguageDef {
     P.caseSensitive = True
 }
 
-term = (EPrim <$> prim) <|> (EVar <$> var) <|> (EMod <$> mod) <|> lambda <|> P.parens lex expr
+term = (EPrim <$> prim) <|> var <|> (EMod <$> mod) <|> lambda <|> P.parens lex expr
 prim = (PInt <$> P.integer lex) <|> (PStr <$> P.stringLiteral lex) <|> (PSym <$> symbol)
 symbol = Symbol <$> (P.char '\'' *> P.identifier lex)
-var = Variable <$> P.identifier lex
+var = asks resolveVar <*> P.identifier lex
 mod = Map.fromList <$> (P.braces lex $ P.commaSep lex defn <* optional (P.reservedOp lex ","))
-defn = massage <$> (Symbol <$> P.identifier lex) <*> P.many var <* P.reservedOp lex "=" <*> expr
-    where massage sym vars body = (sym, foldr ELam body vars)
-lambda = flip (foldr ELam) <$> (P.reservedOp lex "\\" *> P.many1 var <* P.reservedOp lex "->") <*> expr
+defn = (,) <$> (Symbol <$> P.identifier lex) <*> bindings (P.reservedOp lex "=" *> expr)
+lambda = P.reservedOp lex "\\" *> bindings (P.reservedOp lex "->" *> expr)
+bindings body = body <|> do
+    v <- P.identifier lex 
+    ELam (Variable v) <$> local (flip underLambda v) (bindings body)
+whitespace = P.whiteSpace lex
 expr = foldl1 EApp <$> P.many1 term

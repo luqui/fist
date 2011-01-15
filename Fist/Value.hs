@@ -4,6 +4,7 @@ module Fist.Value
     ( MonadEval(..)
     , Symbol(..)
     , Variable(..)
+    , Module
     , Prim(..)
     , Exp(..)
     , whnf
@@ -27,19 +28,21 @@ newtype Symbol = Symbol String
 newtype Variable = Variable String
     deriving (Eq,Ord,Show)
 
+type Module = Map.Map Symbol Exp
+
 data Prim
     = PInt Integer
     | PStr String
     | PSym Symbol
-    deriving Show
+    deriving (Eq,Show)
 
 data Exp
     = EPrim Prim
     | EVar Variable
     | EApp Exp Exp
     | ELam Variable Exp
-    | EMod (Map.Map Symbol Exp)
-    deriving Show
+    | EMod Module
+    deriving (Eq,Show)
 
 whnf :: (MonadEval m) => Exp -> m Exp
 whnf (EApp f x) = do
@@ -49,10 +52,10 @@ whnf (EApp f x) = do
             xnf <- whnf x
             case xnf of
                 EPrim (PSym p) | Just v <- Map.lookup p m -> whnf v
-                EVar v -> return $ EApp (EMod m) (EVar v)
-                _ -> fail $ "Invalid application: " ++ show (EApp fnf xnf)
-        ELam v body -> whnf (substitute v x body)
+                e -> return $ EApp (EMod m) e
         EVar v -> return $ EApp (EVar v) x
+        ELam v body -> whnf $ substitute v x body
+        z -> return $ EApp z x
 whnf x = return x
 
 substitute :: Variable -> Exp -> Exp -> Exp
@@ -64,7 +67,8 @@ substitute v with = go
     go (EVar v') | v == v' = with
                  | otherwise = EVar v'
     go (EApp t u) = EApp (go t) (go u)
-    go l@(ELam v' body) | v' `Set.member` withFVs = go (alphaConvertFresh withFVs l)
+    go l@(ELam v' body) | v == v' = l
+                        | v' `Set.member` withFVs = go (alphaConvertFresh withFVs l)
                         | otherwise = ELam v' (go body)
     go (EMod m) = EMod (Map.map go m)
 
@@ -91,3 +95,4 @@ freshVar avoid v@(Variable name) = head . filter (not . (`Set.member` avoid)) . 
 
 splits :: [a] -> [([a],[a])]
 splits = liftA2 zip inits tails
+
