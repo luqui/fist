@@ -1,0 +1,2 @@
+An interactive shell like ghci that is persisent and amenable to systems of
+nontrivial size... hopefully.  See the sketch: https://gist.github.com/778431
